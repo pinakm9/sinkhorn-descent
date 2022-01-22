@@ -14,8 +14,8 @@ def tf_round(x, decimals):
 
 #@tf.function
 def sinkhorn_div_tf(x, y, alpha=None, beta=None, epsilon=0.01, num_iters=200, p=2):
-    x = tf.convert_to_tensor(x, dtype=tf.float32)
-    y = tf.convert_to_tensor(y, dtype=tf.float32)
+    #x = tf.convert_to_tensor(x, dtype=tf.float32)
+    #y = tf.convert_to_tensor(y, dtype=tf.float32)
     c = cost_matrix(x, y, p=p) 
 
     if alpha is None:

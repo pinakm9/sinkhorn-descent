@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 tf.keras.backend.set_floatx('float32')
 
 def cost_matrix(x, y, p=2):
@@ -100,6 +101,7 @@ class UniformSampleFinder():
         self.n_sink_iters = n_sink_iters 
         self.cost_p = cost_p
         self.u_sample = [tf.Variable(s) for s in w_sample]
+        self.dim = len(w_sample[0])
 
     def find(self, n_iters=100, learning_rate=1e-1):
         optimizer = tf.keras.optimizers.Adam(learning_rate)
@@ -108,6 +110,7 @@ class UniformSampleFinder():
                         self.epsilon, self.n_sink_iters, self.cost_p)
             print('Step = {}, Sinkhorn divergence = {}'.format(iter+1, sd.numpy()), end='\n')
             optimizer.apply_gradients(zip(grads, self.u_sample))
-        return self.u_sample
-        
-
+        if self.dim == 1:
+            return np.array([t.numpy()[0] for t in self.u_sample])
+        else:
+            return np.array([t.numpy() for t in self.u_sample])

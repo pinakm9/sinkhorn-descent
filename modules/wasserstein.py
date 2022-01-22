@@ -19,13 +19,13 @@ def sinkhorn_div_tf(x, y, alpha=None, beta=None, epsilon=0.01, num_iters=200, p=
     c = cost_matrix(x, y, p=p) 
 
     if alpha is None:
-        alpha = tf.ones(x.shape[0], dtype=x.dtype)
+        alpha = tf.ones(len(x))
     else:
         alpha = tf.convert_to_tensor(alpha)
     alpha /= tf.reduce_sum(alpha)
 
     if beta is None:
-        beta = tf.ones(y.shape[0], dtype=y.dtype)
+        beta = tf.ones(len(y))
     else:
         beta = tf.convert_to_tensor(beta)
     beta /= tf.reduce_sum(beta)
@@ -65,12 +65,11 @@ def sinkhorn_div_tf(x, y, alpha=None, beta=None, epsilon=0.01, num_iters=200, p=
     
     sd = tf_round(OT_alpha_beta - tf.reduce_sum(f_ * alpha) - tf.reduce_sum(g_ * beta), 5)
     #print(d**0.5)
-    return sd, f, g, f_, g_ #tf_round(OT_alpha_beta - tf.reduce_sum(f * alpha) - tf.reduce_sum(g * beta), 5)
+    return sd, f, g, f_, g_, log_alpha, log_beta #tf_round(OT_alpha_beta - tf.reduce_sum(f * alpha) - tf.reduce_sum(g * beta), 5)
 
 @tf.function
-def sink_grad_position(x, y, alpha=None, beta=None, epsilon=0.01, num_iters=200, p=2):
-    sd, f, g, f_, g_ = sinkhorn_div_tf(x, y, alpha, beta, epsilon, num_iters, p)
-    log_alpha, log_beta = tf.math.log(alpha), tf.math.log(beta)
+def sink_grad_position(x, y, alpha=None, beta=None, epsilon=0.01, num_iters=50, p=2):
+    sd, f, g, f_, g_, log_alpha, log_beta = sinkhorn_div_tf(x, y, alpha, beta, epsilon, num_iters, p)
     grads = []
     def phi(z):
         #z = tf.concat(args, axis=0)
@@ -79,29 +78,30 @@ def sink_grad_position(x, y, alpha=None, beta=None, epsilon=0.01, num_iters=200,
         c_ = tf.reduce_sum((tf.abs(z - x))**p, axis=1)
         b = epsilon * tf.reduce_logsumexp(log_alpha + (f_ - c_) / epsilon)
         return a + b
-    grads = []
+    grads = tf.TensorArray(dtype=tf.float32, size=len(x), element_shape=x[0].shape)
+    i = 0
     for z in x:
         with tf.GradientTape() as tape:
             tape.watch(z)
             f = phi(z)
-        df = tape.gradient(f, z)
-        grads.append(df)
-    return sd, grads
+        grads = grads.write(i, tape.gradient(f, z))
+        i += 1
+    return sd, grads.stack()
 
 
 class UniformSampleFinder():
     """
     Class that finds a uniform sample given a weighted sample
     """
-    def __init__(self, w_sample, weights, epsilon=0.01, n_sink_iters=50, cost_p=2):
+    def __init__(self, w_sample, weights, epsilon=0.01, n_sink_iters=200, cost_p=2):
         self.w_sample = w_sample
         self.weights = weights
         self.epsilon = epsilon 
         self.n_sink_iters = n_sink_iters 
         self.cost_p = cost_p
-        self.u_sample = [tf.Variable for s in w_sample]
+        self.u_sample = [tf.Variable(s) for s in w_sample]
 
-    def find(self, n_iters=100, learning_rate=1e-2):
+    def find(self, n_iters=100, learning_rate=1e-1):
         optimizer = tf.keras.optimizers.Adam(learning_rate)
         for iter in range(n_iters):
             sd, grads = sink_grad_position(self.u_sample, self.w_sample, None, self.weights,\

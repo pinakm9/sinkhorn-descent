@@ -1,12 +1,4 @@
-from pickletools import optimize
 import tensorflow as tf
-import tensorflow_probability as tfp
-import tables
-import numpy as np
-import pandas as pd
-import os
-import matplotlib.pyplot as plt
-import json
 tf.keras.backend.set_floatx('float32')
 
 def cost_matrix(x, y, p=2):

@@ -13,7 +13,7 @@ def tf_round(x, decimals):
     multiplier = tf.constant(10**decimals, dtype=x.dtype)
     return tf.round(x * multiplier) / multiplier
 
-#@tf.function
+@tf.function
 def sinkhorn_div_tf(x, y, alpha=None, beta=None, epsilon=0.01, num_iters=200, p=2):
     #x = tf.convert_to_tensor(x, dtype=tf.float32)
     #y = tf.convert_to_tensor(y, dtype=tf.float32)
@@ -87,7 +87,7 @@ def sink_grad_position(x, y, alpha=None, beta=None, epsilon=0.01, num_iters=50, 
             f = phi(z)
         grads = grads.write(i, tape.gradient(f, z))
         i += 1
-    return sd, grads.stack()
+    return sd, grads.stack(), f-f_
 
 
 class UniformSampleFinder():
@@ -101,16 +101,47 @@ class UniformSampleFinder():
         self.n_sink_iters = n_sink_iters 
         self.cost_p = cost_p
         self.u_sample = [tf.Variable(s) for s in w_sample]
+        self.uniform_weights = tf.ones_like(weights) / len(weights)
+        self.c_weights = tf.Variable(self.weights)
         self.dim = len(w_sample[0])
 
     def find(self, n_iters=100, learning_rate=1e-1):
         optimizer = tf.keras.optimizers.Adam(learning_rate)
         for iter in range(n_iters):
-            sd, grads = sink_grad_position(self.u_sample, self.w_sample, None, self.weights,\
+            sd, grads, _ = sink_grad_position(self.u_sample, self.w_sample, None, self.weights,\
                         self.epsilon, self.n_sink_iters, self.cost_p)
             print('Step = {}, Sinkhorn divergence = {}'.format(iter+1, sd.numpy()), end='\n')
             optimizer.apply_gradients(zip(grads, self.u_sample))
         if self.dim == 1:
-            return np.array([t.numpy()[0] for t in self.u_sample])
+            return tf.squeeze(self.u_sample)
         else:
             return np.array([t.numpy() for t in self.u_sample])
+
+    def find_2(self, weight_fn, n_iters=100, learning_rate=1e-1):
+        optimizer = tf.keras.optimizers.Adam(learning_rate)
+        for iter in range(n_iters):
+            if iter == 0:
+                sd, grads, _ = sink_grad_position(self.u_sample, self.w_sample, None, self.weights,\
+                            self.epsilon, self.n_sink_iters, self.cost_p)
+            else:
+                uw_sample = tf.convert_to_tensor(self.u_sample)
+                uw_weights = weight_fn(uw_sample) 
+                sd, grads, _ = sink_grad_position(self.u_sample, self.w_sample, None, self.weights,\
+                            self.epsilon, self.n_sink_iters, self.cost_p)
+                sd_, grads_ =  sink_grad_position(self.u_sample, self.u_sample, None, uw_weights,\
+                            self.epsilon, self.n_sink_iters, self.cost_p)
+                grads = [g + grads_[i] for i, g in enumerate(grads)]
+            
+            print('Step = {}, Sinkhorn divergence = {}'.format(iter+1, sd.numpy()), end='\n')
+            optimizer.apply_gradients(zip(grads, self.u_sample))
+        if self.dim == 1:
+            return tf.squeeze(self.u_sample)
+        else:
+            return np.array([t.numpy() for t in self.u_sample], dtype=np.float32)
+
+
+
+
+
+
+
